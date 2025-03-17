@@ -145,7 +145,7 @@ def categorical_crossentropy_loss(y_true, y_pred):
     epsilon = 1e-9
     # Compute the loss for each sample and then average
     sample_losses = -np.sum(y_true * np.log(y_pred + epsilon), axis=1)
-    return np.sum(sample_losses)
+    return np.mean(sample_losses)
 
 
 def encoder(labels):
@@ -157,7 +157,7 @@ def encoder(labels):
         
     return np.array(vector)
   
-def backpropagation(batch, caches, output, labels, weights, biases, learning_rate = 0.1, activation = ReLu, actvation_last = Softmax):
+def backpropagation(batch, caches, output, labels, weights, biases, learning_rate = 0.01, activation = ReLu, actvation_last = Softmax):
     
     derivatives = []
     
@@ -217,16 +217,18 @@ batches, batches_labels = create_batches(train_images, encoded_train_labels, 20)
   
 weights, biases = initialize([784, 256, 64, 16, 5])
 
+epochs = 20
 
-for i in range(len(batches)):
-    
-    output, weights, biases, caches = forward_pass_network(batches[i], weights, biases, batch_size= 20)
-      
-    loss = categorical_crossentropy_loss(batches_labels[i], output[-1])
-    
-    print(loss)
-    
-    backpropagation(batches[i], caches, output[-1], batches_labels[i], weights, biases)
+for j in range(epochs):
+    for i in range(len(batches)):
+        
+        output, weights, biases, caches = forward_pass_network(batches[i], weights, biases, batch_size= 20)
+          
+        loss = categorical_crossentropy_loss(batches_labels[i], output[-1])
+        
+        print(loss)
+        
+        backpropagation(batches[i], caches, output[-1], batches_labels[i], weights, biases)
     
     
   
