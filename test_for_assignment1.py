@@ -8,9 +8,9 @@ Created on Tue Mar 11 17:39:55 2025
 
 import numpy as np
 
-train_images = np.load('train_images.npy')
+train_images = np.load('train_images.npy')/255
 train_labels = np.load('train_labels.npy')
-test_images = np.load('test_images.npy')
+test_images = np.load('test_images.npy')/255
 test_labels = np.load('test_labels.npy')
 
 #print(train_images.shape) # (20000, 28, 28)
@@ -107,7 +107,12 @@ def initialize(vector, seed=42):
         bias = np.random.randn(vector[i+1])*0.01
         biases.append(bias)
 
-    return weights, biases
+
+    # After initializing weights and biases:
+    v_weights = [np.zeros_like(W) for W in weights]
+    v_biases = [np.zeros_like(b) for b in biases]
+
+    return weights, biases, v_weights, v_biases
 
 
 def forward_pass_network(batch, weights, biases, batch_size, activation=ReLu, seed=42):
@@ -157,19 +162,18 @@ def encoder(labels):
         
     return np.array(vector)
   
-def backpropagation(batch, caches, output, labels, weights, biases, learning_rate = 0.01, activation = ReLu, actvation_last = Softmax):
+def backpropagation(batch, caches, output, labels, weights, biases, v_weights, v_biases, learning_rate = 0.001, momentum= 0.9, activation = ReLu, actvation_last = Softmax):
     
     derivatives = []
-    
+ 
     
     #For Softmax
-    
     cross = derCrossEntropy(labels,output[-1])
     dW4 = (caches[2][0].T) @ cross
     db4 = np.sum(cross, axis=0, keepdims=True)
     derivatives.append([dW4,db4])
     
-    
+ 
     # Can be for looped
     dLayer3 = cross @  weights[3].T
     dReLu3 =  dLayer3 * derReLu(caches[2][1])
@@ -188,23 +192,63 @@ def backpropagation(batch, caches, output, labels, weights, biases, learning_rat
     dW1 = batch.T @ dReLu1
     db1 = np.sum(dReLu1, axis=0, keepdims=True)
     derivatives.append([dW1,db1])
-                            
+    """
+    
+    # Can be for looped
+    dLayer3 = cross @  weights[3].T
+    dTanh3 =  dLayer3 * derTanh(caches[2][1])
+    dW3 = caches[1][0].T @ dTanh3
+    db3 = np.sum(dTanh3, axis=0, keepdims=True)
+    derivatives.append([dW3,db3])
+    
+    dLayer2 = dTanh3 @ weights[2].T
+    dTanh2 = dLayer2 * derTanh(caches[1][1])
+    dW2 = caches[0][0].T @ dTanh2
+    db2 = np.sum(dTanh2, axis=0, keepdims=True)
+    derivatives.append([dW2,db2])
+    
+    dLayer1 = dTanh2 @ weights[1].T
+    dTanh1 = dLayer1 * derTanh(caches[0][1])
+    dW1 = batch.T @ dTanh1
+    db1 = np.sum(dTanh1, axis=0, keepdims=True)
+    derivatives.append([dW1,db1])
+    """
     
     
-    #Updates
     for i in range(len(derivatives)):
-        weights[-(i+1)] -= derivatives[i][0]*learning_rate
+        # Update velocity for weights: v = momentum * v + learning_rate * gradient
+        v_weights[-(i+1)] = momentum * v_weights[-(i+1)] + learning_rate * derivatives[i][0]
+        # Update weight: W = W - v
+        weights[-(i+1)] -= v_weights[-(i+1)]
+        
+        # Update velocity for biases similarly:
+        # Convert derivative for bias to proper shape if needed.
         bias_grad = (derivatives[i][1].T).squeeze()
-        biases[-(i+1)] -= bias_grad * learning_rate
+        v_biases[-(i+1)] = momentum * v_biases[-(i+1)] + learning_rate * bias_grad
+        biases[-(i+1)] -= v_biases[-(i+1)]
     
     
     
+def predict(X, weights, biases, batch_size=20):
+    # Create batches without labels (we don't need to shuffle here if order doesn't matter)
+    # We'll reuse create_batches but ignore labels.
+    num_samples = X.shape[0]
+    X_flat = X.reshape(num_samples, -1)
+    batches = []
+    for i in range(0, num_samples, batch_size):
+        batch = X_flat[i:i+batch_size]
+        batches.append(batch)
     
-    
-    
-    
-    
-    
+    predictions = []
+    for batch in batches:
+        outputs, _, _, _ = forward_pass_network(batch, weights, biases, batch_size)
+        # The final output is in outputs[-1]; take the argmax along the class axis.
+        preds = np.argmax(outputs[-1], axis=1)
+        predictions.extend(preds)
+    return np.array(predictions)
+
+
+        
 
 encoded_train_labels = encoder(train_labels)
 encoded_test_labels = encoder(test_labels)
@@ -215,21 +259,29 @@ encoded_test_labels = encoder(test_labels)
 # Create randomized batches (this also flattens the data to (num_samples, 784))
 batches, batches_labels = create_batches(train_images, encoded_train_labels, 20)
   
-weights, biases = initialize([784, 256, 64, 16, 5])
+weights, biases, v_weights, v_biases = initialize([784, 256, 128, 64, 5])
 
-epochs = 20
+epochs = 1
 
 for j in range(epochs):
     for i in range(len(batches)):
         
-        output, weights, biases, caches = forward_pass_network(batches[i], weights, biases, batch_size= 20)
+        output, weights, biases, caches = forward_pass_network(batches[i], weights, biases, batch_size= 20, activation=ReLu)
           
         loss = categorical_crossentropy_loss(batches_labels[i], output[-1])
         
         print(loss)
         
-        backpropagation(batches[i], caches, output[-1], batches_labels[i], weights, biases)
+        backpropagation(batches[i], caches, output[-1], batches_labels[i], weights, biases, v_weights, v_biases)
     
+
     
+
+ 
+
+# After training, for example:
+test_preds = predict(test_images, weights, biases, batch_size=20)
+accuracy = np.mean(test_preds == test_labels)
+print("Test Accuracy:", accuracy)
   
-  
+
