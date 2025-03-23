@@ -13,9 +13,6 @@ train_labels = np.load('train_labels.npy')
 test_images = np.load('test_images.npy')/255
 test_labels = np.load('test_labels.npy')
 
-#print(train_images.shape) # (20000, 28, 28)
-#print(test_images.shape) # (5000, 28, 28)
-
 
 ## Code for Activation Functions and Derivatives
 
@@ -85,29 +82,19 @@ def create_batches(X, X_labels, batch_size, seed=42):
     return batches, batches_labels
 
 
+def he_initialize(vector, seed=42):
 
-def initialize(vector, seed=42):
-    
-    """ 
-    
-    Vector input is the number of nuerons per layer structured as a vector
-    So for a network with 784x64x16x4, input vector is [784,64,16,4]
-    
-    """
     weights = []
     biases = []
-    
     np.random.seed(seed)
-    
     for i in range(len(vector) - 1):
-        # Weight shape: (current layer size, next layer size)
-        weight = np.random.randn(vector[i], vector[i+1])*0.01
+        fan_in = vector[i]
+        scale = np.sqrt(2.0 / fan_in)
+        weight = np.random.randn(vector[i], vector[i+1]) * scale
         weights.append(weight)
-        # Bias shape: (next layer size,)
-        bias = np.random.randn(vector[i+1])*0.01
+        bias = np.zeros(vector[i+1])
         biases.append(bias)
-
-
+    
     # After initializing weights and biases:
     v_weights = [np.zeros_like(W) for W in weights]
     v_biases = [np.zeros_like(b) for b in biases]
@@ -162,38 +149,39 @@ def encoder(labels):
         
     return np.array(vector)
   
-def backpropagation(batch, caches, output, labels, weights, biases, v_weights, v_biases, learning_rate = 0.001, momentum= 0.9, activation = ReLu, actvation_last = Softmax):
-    
+def backpropagation(batch, caches, output, labels, weights, biases, v_weights, v_biases, learning_rate = 0.01, momentum= 0.9, activation = ReLu, actvation_last = Softmax):
+
     derivatives = []
- 
+    batch_size = batch.shape[0]
     
     #For Softmax
-    cross = derCrossEntropy(labels,output[-1])
-    dW4 = (caches[2][0].T) @ cross
-    db4 = np.sum(cross, axis=0, keepdims=True)
+    cross = derCrossEntropy(labels,output)
+    dW4 = (1/batch_size)*((caches[2][0].T) @ cross)
+    db4 = (1/batch_size)*(np.sum(cross, axis=0, keepdims=True))
     derivatives.append([dW4,db4])
     
  
     # Can be for looped
     dLayer3 = cross @  weights[3].T
     dReLu3 =  dLayer3 * derReLu(caches[2][1])
-    dW3 = caches[1][0].T @ dReLu3
-    db3 = np.sum(dReLu3, axis=0, keepdims=True)
+    dW3 = (1/batch_size)*(caches[1][0].T @ dReLu3)
+    db3 = (1/batch_size)*(np.sum(dReLu3, axis=0, keepdims=True))
     derivatives.append([dW3,db3])
     
     dLayer2 = dReLu3 @ weights[2].T
     dReLu2 = dLayer2 * derReLu(caches[1][1])
-    dW2 = caches[0][0].T @ dReLu2
-    db2 = np.sum(dReLu2, axis=0, keepdims=True)
+    dW2 = (1/batch_size)*(caches[0][0].T @ dReLu2)
+    db2 = (1/batch_size)*(np.sum(dReLu2, axis=0, keepdims=True))
     derivatives.append([dW2,db2])
     
     dLayer1 = dReLu2 @ weights[1].T
     dReLu1 = dLayer1 * derReLu(caches[0][1])
-    dW1 = batch.T @ dReLu1
-    db1 = np.sum(dReLu1, axis=0, keepdims=True)
+    dW1 = (1/batch_size)*(batch.T @ dReLu1)
+    db1 = (1/batch_size)*(np.sum(dReLu1, axis=0, keepdims=True))
     derivatives.append([dW1,db1])
-    """
+
     
+    """
     # Can be for looped
     dLayer3 = cross @  weights[3].T
     dTanh3 =  dLayer3 * derTanh(caches[2][1])
@@ -230,25 +218,18 @@ def backpropagation(batch, caches, output, labels, weights, biases, v_weights, v
     
     
 def predict(X, weights, biases, batch_size=20):
-    # Create batches without labels (we don't need to shuffle here if order doesn't matter)
-    # We'll reuse create_batches but ignore labels.
     num_samples = X.shape[0]
     X_flat = X.reshape(num_samples, -1)
-    batches = []
+    predictions = []
     for i in range(0, num_samples, batch_size):
         batch = X_flat[i:i+batch_size]
-        batches.append(batch)
-    
-    predictions = []
-    for batch in batches:
         outputs, _, _, _ = forward_pass_network(batch, weights, biases, batch_size)
-        # The final output is in outputs[-1]; take the argmax along the class axis.
+        # The final output is in outputs[-1]; take argmax along the class axis.
         preds = np.argmax(outputs[-1], axis=1)
         predictions.extend(preds)
     return np.array(predictions)
 
 
-        
 
 encoded_train_labels = encoder(train_labels)
 encoded_test_labels = encoder(test_labels)
@@ -258,30 +239,88 @@ encoded_test_labels = encoder(test_labels)
 
 # Create randomized batches (this also flattens the data to (num_samples, 784))
 batches, batches_labels = create_batches(train_images, encoded_train_labels, 20)
-  
-weights, biases, v_weights, v_biases = initialize([784, 256, 128, 64, 5])
 
-epochs = 1
+weights, biases, v_weights, v_biases = he_initialize([784, 256, 64, 16, 5])
 
-for j in range(epochs):
+
+epochs = 40
+
+for epoch in range(epochs):
+    
+    total_loss = 0
+    
+    
     for i in range(len(batches)):
         
         output, weights, biases, caches = forward_pass_network(batches[i], weights, biases, batch_size= 20, activation=ReLu)
           
         loss = categorical_crossentropy_loss(batches_labels[i], output[-1])
         
-        print(loss)
+        total_loss += loss
         
         backpropagation(batches[i], caches, output[-1], batches_labels[i], weights, biases, v_weights, v_biases)
-    
 
-    
 
- 
 
-# After training, for example:
-test_preds = predict(test_images, weights, biases, batch_size=20)
-accuracy = np.mean(test_preds == test_labels)
-print("Test Accuracy:", accuracy)
-  
+    # Print epoch statistics
+    avg_loss = total_loss / len(batches)
+    if epoch % 1 == 0:  # Print every epoch
+        # Evaluate on test set
+        test_preds = predict(test_images, weights, biases, batch_size=20)
+        accuracy = np.mean(test_preds == test_labels)
+        print(f"Epoch {epoch+1}/{epochs}, Avg Loss: {avg_loss:.4f}, Test Accuracy: {accuracy:.4f}")
+
+
+
+import tensorflow as tf
+from tensorflow.keras import backend as K
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Activation  
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.metrics import categorical_crossentropy
+from tensorflow.keras.utils import to_categorical
+
+# Define the model with the architecture [784, 256, 64, 16, 5]
+model = Sequential([
+    Dense(256, input_shape=(784,), activation="relu"),  # First hidden layer
+    Dense(64, activation="relu"),                       # Second hidden layer
+    Dense(16, activation="relu"),                       # Third hidden layer
+    Dense(5, activation="softmax")                      # Output layer with 5 classes
+])
+
+# Display model summary
+model.summary()
+
+# Compile with SGD optimizer using momentum
+sgd_optimizer = SGD(learning_rate=0.01, momentum=0.9)
+model.compile(
+    optimizer=sgd_optimizer, 
+    loss='categorical_crossentropy', 
+    metrics=['accuracy']
+)
+
+# Make sure labels are properly one-hot encoded
+# train_labels_onehot = to_categorical(train_labels, num_classes=5)
+
+# Train the model
+# Assuming train_images is already flattened and normalized
+train_images_flat = train_images.reshape(train_images.shape[0], -1)  # Flatten 28x28 to 784
+history = model.fit(
+    train_images_flat,
+    encoded_train_labels,  # Using your encoder function output
+    batch_size=20,
+    epochs=10,
+    shuffle=True,
+    verbose=2,
+    validation_split=0.1  # Optional: use 10% of training data for validation
+)
+
+# Evaluate on test set
+test_images_flat = test_images.reshape(test_images.shape[0], -1)  # Flatten 28x28 to 784
+test_loss, test_acc = model.evaluate(test_images_flat, encoded_test_labels, verbose=2)
+print(f"Test accuracy: {test_acc:.4f}")
+
+
+
+
 
