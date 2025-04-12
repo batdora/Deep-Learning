@@ -27,6 +27,7 @@ def Tanh (vector):
 
 def Softmax(vector):
     
+    # Subtract largest element for stability in exponentiation
     x_shifted = vector - np.max(vector, axis=-1, keepdims=True)
     
     exps = np.exp(x_shifted)
