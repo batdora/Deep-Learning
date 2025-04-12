@@ -268,17 +268,17 @@ def backprop_generic(x, caches, dA, weights, biases, v_weights, v_biases,
         biases[i] -= v_biases[i]
  
     
-def predict(X, img_weights, img_biases, glove_weights, glove_biases, labels_glove, batch_size=20):
+def predict(X, img_weights, img_biases, glove_weights, glove_biases, labels_glove, activation, batch_size=20):
     num_samples = X.shape[0]
     X_flat = X.reshape(num_samples, -1)
     predictions = []
 
     # Vectorized glove embedding encoding
-    glove_embeds, _ = forward_pass(labels_glove, glove_weights, glove_biases, activation=ReLu)  # shape: (C, D)
+    glove_embeds, _ = forward_pass(labels_glove, glove_weights, glove_biases, activation)  # shape: (C, D)
 
     for i in range(0, num_samples, batch_size):
         batch = X_flat[i:i+batch_size]
-        img_embed, _ = forward_pass(batch, img_weights, img_biases, activation=ReLu)  # shape: (B, D)
+        img_embed, _ = forward_pass(batch, img_weights, img_biases, activation)  # shape: (B, D)
 
         # Compute pairwise Euclidean distances: (B, C)
         dists = np.sqrt(
@@ -370,7 +370,7 @@ for embedding_dim in embedding_dims:
             glove_weights, glove_biases, glove_vw, glove_vb = xavier_initialize(glove_model_arch)
         
    
-        print(f"The working activation function is {activationfuncs[r]} and the embedding dimensions are {embedding_dim}")
+        print(f"The working activation function is {activationfuncs[r].__name__} and embedding dim is {embedding_dim}")
         for epoch in range(epochs):
             total_loss = 0
             
@@ -414,7 +414,7 @@ for embedding_dim in embedding_dims:
             
             if epoch % 1 == 0:  # Print every epoch
                 test_preds = predict(test_images, img_weights, img_biases,
-                                     glove_weights, glove_biases, labels_glove,
+                                     glove_weights, glove_biases, labels_glove, activation= activationfuncs[r],
                                      batch_size=batch_size)
             
                 accuracy = np.mean(test_preds == test_labels)
